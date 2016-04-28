@@ -333,6 +333,11 @@ skip_bss:
 
         /* XXXX call PROCINFO_cpu_init here */
 
+        /* Ensure that any exceptions encountered at a given EL
+         * are handled using that EL's stack pointer, rather
+         * than SP_EL0. */
+        msr spsel, #1
+
         /* Set up memory attribute type tables */
         ldr   x0, =MAIRVAL
         msr   mair_el2, x0
