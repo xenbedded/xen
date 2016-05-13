@@ -657,8 +657,8 @@ static void ns16550_setup_postirq(struct ns16550 *uart)
         ns_write_reg(uart,
                      UART_MCR, UART_MCR_OUT2 | UART_MCR_DTR | UART_MCR_RTS);
 
-        /* Enable receive and transmit interrupts. */
-        ns_write_reg(uart, UART_IER, UART_IER_ERDAI | UART_IER_ETHREI);
+        /* Enable receive interrupts. */
+        ns_write_reg(uart, UART_IER, UART_IER_ERDAI);
     }
 
     if ( uart->irq >= 0 )
@@ -814,6 +814,24 @@ static int __init ns16550_irq(struct serial_port *port)
     return ((uart->irq > 0) ? uart->irq : -1);
 }
 
+static void ns16550_start_tx(struct serial_port *port)
+{
+    struct ns16550 *uart = port->uart;
+    unsigned int ier = ns_read_reg(uart, UART_IER);
+
+    if (!(ier & UART_IER_ETHREI))
+        ns_write_reg(uart, UART_IER, ier | UART_IER_ETHREI);
+}
+
+static void ns16550_stop_tx(struct serial_port *port)
+{
+    struct ns16550 *uart = port->uart;
+    unsigned int ier = ns_read_reg(uart, UART_IER);
+
+    if (ier & UART_IER_ETHREI)
+        ns_write_reg(uart, UART_IER, ier & ~UART_IER_ETHREI);
+}
+
 #ifdef CONFIG_ARM
 static const struct vuart_info *ns16550_vuart_info(struct serial_port *port)
 {
@@ -833,6 +851,8 @@ static struct uart_driver __read_mostly ns16550_driver = {
     .putc         = ns16550_putc,
     .getc         = ns16550_getc,
     .irq          = ns16550_irq,
+    .start_tx     = ns16550_start_tx,
+    .stop_tx      = ns16550_stop_tx,
 #ifdef CONFIG_ARM
     .vuart_info   = ns16550_vuart_info,
 #endif
