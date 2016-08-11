@@ -41,6 +41,7 @@
 #define UART_IER_ETHREI   0x02    /* tx reg. empty        */
 #define UART_IER_ELSI     0x04    /* rx line status       */
 #define UART_IER_EMSI     0x08    /* MODEM status         */
+#define UART_IER_RTOIE    0x10    /* rx timeout           */
 
 /* Interrupt Identificatiegister */
 #define UART_IIR_NOINT    0x01    /* no interrupt pending */
