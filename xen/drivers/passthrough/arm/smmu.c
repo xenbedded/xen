@@ -103,7 +103,7 @@ static struct resource *platform_get_resource(struct platform_device *pdev,
 		return ((ret) ? NULL : &res);
 
 	case IORESOURCE_IRQ:
-		ret = platform_get_irq(pdev, num);
+		ret = platform_irq_for_device(pdev, num);
 		if (ret < 0)
 			return NULL;
 
@@ -2349,7 +2349,7 @@ static int arm_smmu_device_dt_probe(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < num_irqs; ++i) {
-		int irq = platform_get_irq(pdev, i);
+		int irq = platform_irq_for_device(pdev, i);
 
 		if (irq < 0) {
 			dev_err(dev, "failed to get irq index %d\n", i);

@@ -26,6 +26,7 @@
 #include <asm/io.h>
 #ifdef CONFIG_HAS_DEVICE_TREE
 #include <asm/device.h>
+#include <asm/platform.h>
 #endif
 #ifdef CONFIG_X86
 #include <asm/fixmap.h>
@@ -1245,7 +1246,7 @@ static int __init ns16550_uart_dt_init(struct dt_device_node *dev,
     if ( uart->reg_width != 1 && uart->reg_width != 4 )
         return -EINVAL;
 
-    res = platform_get_irq(dev, 0);
+    res = platform_irq_for_device(dev, 0);
     if ( ! res )
         return -EINVAL;
     uart->irq = res;
