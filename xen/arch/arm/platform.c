@@ -149,7 +149,7 @@ int platform_route_irq_to_guest(struct domain *d, unsigned int virq,
 void platform_route_irq_to_xen(struct irq_desc *desc, unsigned int priority)
 {
     if ( platform && platform->route_irq_to_xen )
-        platform->route_irq_to_guest(desc, priority);
+        platform->route_irq_to_xen(desc, priority);
     else
         gic_route_irq_to_xen(desc, priority);
 }

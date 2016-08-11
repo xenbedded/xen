@@ -52,7 +52,7 @@ void platform_poweroff(void);
 
 int platform_route_irq_to_guest(struct domain *d, unsigned int virq,
                                  struct irq_desc *desc, unsigned int priority);
-void platform_route_irq_to_guest(struct irq_desc *desc, unsigned int priority);
+void platform_route_irq_to_xen(struct irq_desc *desc, unsigned int priority);
 bool_t platform_irq_is_routable(struct dt_raw_irq *rirq);
 int platform_irq_for_device(const struct dt_device_node *dev, int index);
 
