@@ -63,6 +63,7 @@ static struct ns16550 {
     unsigned int timeout_ms;
     bool_t intr_works;
     bool_t dw_usr_bsy;
+    bool_t needs_rtoie;
 #ifdef CONFIG_HAS_PCI
     /* PCI card parameters. */
     bool_t pb_bdf_enable;   /* if =1, pb-bdf effective, port behind bridge */
@@ -651,12 +652,23 @@ static void ns16550_setup_postirq(struct ns16550 *uart)
 {
     if ( uart->irq > 0 )
     {
+        u8 ier_value = 0;
+
         /* Master interrupt enable; also keep DTR/RTS asserted. */
         ns_write_reg(uart,
                      UART_MCR, UART_MCR_OUT2 | UART_MCR_DTR | UART_MCR_RTS);
 
         /* Enable receive interrupts. */
-        ns_write_reg(uart, UART_IER, UART_IER_ERDAI);
+        ier_value = UART_IER_ERDAI;
+
+        /*
+         * If we're on a platform that needs Rx timeouts enabled, also
+         * set Rx TimeOut Interrupt Enable (RTOIE).
+         */
+        if ( uart->needs_rtoie )
+          ier_value |= UART_IER_RTOIE;
+
+        ns_write_reg(uart, UART_IER, ier_value);
     }
 
     if ( uart->irq >= 0 )
@@ -1272,6 +1284,7 @@ static int __init ns16550_uart_dt_init(struct dt_device_node *dev,
     uart->irq = res;
 
     uart->dw_usr_bsy = dt_device_is_compatible(dev, "snps,dw-apb-uart");
+    uart->needs_rtoie = dt_device_is_compatible(dev, "nvidia,tegra20-uart");
 
     uart->vuart.base_addr = uart->io_base;
     uart->vuart.size = uart->io_size;
@@ -1292,6 +1305,7 @@ static const struct dt_device_match ns16550_dt_match[] __initconst =
     DT_MATCH_COMPATIBLE("ns16550"),
     DT_MATCH_COMPATIBLE("ns16550a"),
     DT_MATCH_COMPATIBLE("snps,dw-apb-uart"),
+    DT_MATCH_COMPATIBLE("nvidia,tegra20-uart"),
     { /* sentinel */ },
 };
 
