@@ -147,6 +147,36 @@ bool_t platform_device_is_blacklisted(const struct dt_device_node *node)
     return (dt_match_node(blacklist, node) != NULL);
 }
 
+int platform_route_irq_to_guest(struct domain *d, unsigned int virq,
+                                struct irq_desc *desc, unsigned int priority)
+{
+    if ( platform && platform->route_irq_to_guest )
+        return platform->route_irq_to_guest(d, virq, desc, priority);
+    else
+        return gic_route_irq_to_guest(d, virq, desc, priority);
+}
+
+void platform_route_irq_to_xen(struct irq_desc *desc, unsigned int priority)
+{
+    if ( platform && platform->route_irq_to_xen )
+        platform->route_irq_to_xen(desc, priority);
+    else
+        gic_route_irq_to_xen(desc, priority);
+}
+
+bool platform_irq_is_routable(const struct dt_raw_irq * rirq)
+{
+    /*
+     * If we have a platform-specific method to determine if an IRQ is routable,
+     * check that; otherwise fall back to checking to see if an IRQ belongs to
+     * the GIC.
+     */
+    if ( platform && platform->irq_is_routable )
+        return platform->irq_is_routable(rirq);
+    else
+        return (rirq->controller == dt_interrupt_controller);
+}
+
 /*
  * Local variables:
  * mode: C

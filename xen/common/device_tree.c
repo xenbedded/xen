@@ -22,6 +22,7 @@
 #include <xen/string.h>
 #include <xen/cpumask.h>
 #include <xen/ctype.h>
+#include <asm/platform.h>
 #include <asm/setup.h>
 #include <xen/err.h>
 
@@ -1467,11 +1468,8 @@ int dt_irq_translate(const struct dt_raw_irq *raw,
     ASSERT(dt_irq_xlate != NULL);
     ASSERT(dt_interrupt_controller != NULL);
 
-    /*
-     * TODO: Retrieve the right irq_xlate. This is only works for the primary
-     * interrupt controller.
-     */
-    if ( raw->controller != dt_interrupt_controller )
+    /* Only proceed with translation if the irq is routable on the platform. */
+    if ( !platform_irq_is_routable(raw) )
         return -EINVAL;
 
     return dt_irq_xlate(raw->specifier, raw->size,
