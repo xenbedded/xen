@@ -1272,6 +1272,7 @@ static const struct dt_device_match ns16550_dt_match[] __initconst =
     DT_MATCH_COMPATIBLE("ns16550"),
     DT_MATCH_COMPATIBLE("ns16550a"),
     DT_MATCH_COMPATIBLE("snps,dw-apb-uart"),
+    DT_MATCH_COMPATIBLE("nvidia,tegra20-uart"),
     { /* sentinel */ },
 };
 
