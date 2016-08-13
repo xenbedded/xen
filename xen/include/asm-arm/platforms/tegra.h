@@ -4,6 +4,7 @@
 #define   TEGRA_ICTLR_BASE            0x60004000
 #define   TEGRA_ICTLR_SIZE            0x00000100
 #define   TEGRA_ICTLR_COUNT           6
+#define   TEGRA_IRQS_PER_ICTLR        32
 
 #define   TEGRA_RESET_BASE            0x7000e400
 #define   TEGRA_RESET_SIZE            4
