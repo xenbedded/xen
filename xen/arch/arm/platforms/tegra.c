@@ -174,6 +174,9 @@ static void tegra_ictlr_set_interrupt_enable(unsigned int irq, bool enabled)
     /* Determine the mask we'll be working with. */
     uint32_t mask = BIT(ictlr_irq % TEGRA_IRQS_PER_ICTLR);
 
+    /* stores previous interrupt class */
+    uint32_t previous_iep_class;
+
     /* Sanity check our memory access. */
     ASSERT(tegra_ictlr_base);
     ASSERT(ictlr_number < TEGRA_ICTLR_COUNT);
@@ -183,7 +186,8 @@ static void tegra_ictlr_set_interrupt_enable(unsigned int irq, bool enabled)
     writel(mask, target_ictlr + register_number);
 
     /* Mark the interrupt as a normal interrupt-- not a fast IRQ. */
-    writel(mask, target_ictlr + TEGRA_ICTLR_CPU_IEP_CLASS);
+    previous_iep_class = readl(target_ictlr + TEGRA_ICTLR_CPU_IEP_CLASS);
+    writel(previous_iep_class & ~mask, target_ictlr + TEGRA_ICTLR_CPU_IEP_CLASS);
 }
 
 
