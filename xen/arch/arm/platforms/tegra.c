@@ -523,8 +523,18 @@ static const char * const tegra_dt_compat[] __initconst =
     NULL
 };
 
+static const struct dt_device_match tegra_blacklist_dev[] __initconst =
+{
+    /*
+     * The UARTs share a page which runs the risk of mapping the Xen console
+     * UART to dom0, so don't map any of them.
+     */
+    DT_MATCH_COMPATIBLE("nvidia,tegra20-uart"),
+    { /* sentinel */ },
+};
 
 PLATFORM_START(tegra, "Tegra")
+    .blacklist_dev = tegra_blacklist_dev,
     .compatible = tegra_dt_compat,
     .init = tegra_init,
     .reset = tegra_reset,
