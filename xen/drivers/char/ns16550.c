@@ -65,6 +65,8 @@ static struct ns16550 {
     unsigned int timeout_ms;
     bool_t intr_works;
     bool_t dw_usr_bsy;
+    unsigned int ier;
+    unsigned int ier_mask;
 #ifdef CONFIG_HAS_PCI
     /* PCI card parameters. */
     bool_t pb_bdf_enable;   /* if =1, pb-bdf effective, port behind bridge */
@@ -657,8 +659,9 @@ static void ns16550_setup_postirq(struct ns16550 *uart)
         ns_write_reg(uart,
                      UART_MCR, UART_MCR_OUT2 | UART_MCR_DTR | UART_MCR_RTS);
 
-        /* Enable receive interrupts. */
-        ns_write_reg(uart, UART_IER, UART_IER_ERDAI);
+        /* Enable interrupts from device's default mask. */
+        uart->ier = uart->ier_mask;
+        ns_write_reg(uart, UART_IER, uart->ier);
     }
 
     if ( uart->irq >= 0 )
@@ -817,10 +820,12 @@ static int __init ns16550_irq(struct serial_port *port)
 static void ns16550_start_tx(struct serial_port *port)
 {
     struct ns16550 *uart = port->uart;
-    unsigned int ier = ns_read_reg(uart, UART_IER);
 
-    if (!(ier & UART_IER_ETHREI))
-        ns_write_reg(uart, UART_IER, ier | UART_IER_ETHREI);
+    /* if transmit interrupts are not enabled, enable them */
+    if (!(uart->ier & UART_IER_ETHREI)) {
+        uart->ier |= UART_IER_ETHREI;
+        ns_write_reg(uart, UART_IER, uart->ier);
+    }
 }
 
 static void ns16550_stop_tx(struct serial_port *port)
@@ -828,8 +833,11 @@ static void ns16550_stop_tx(struct serial_port *port)
     struct ns16550 *uart = port->uart;
     unsigned int ier = ns_read_reg(uart, UART_IER);
 
-    if (ier & UART_IER_ETHREI)
-        ns_write_reg(uart, UART_IER, ier & ~UART_IER_ETHREI);
+    /* if transmit interrupts are enabled, disable them */
+    if (ier & UART_IER_ETHREI) {
+        uart->ier &= ~UART_IER_ETHREI;
+        ns_write_reg(uart, UART_IER, uart->ier);
+    }
 }
 
 #ifdef CONFIG_ARM
@@ -1197,6 +1205,9 @@ static void ns16550_init_common(struct ns16550 *uart)
 
     /* Default lsr_mask = UART_LSR_THRE */
     uart->lsr_mask  = UART_LSR_THRE;
+
+    /* Default ier_mask = UART_IER_ERDAI */
+    uart->ier_mask = UART_IER_ERDAI;
 }
 
 void __init ns16550_init(int index, struct ns16550_defaults *defaults)
@@ -1273,6 +1284,10 @@ static int __init ns16550_uart_dt_init(struct dt_device_node *dev,
 
     uart->dw_usr_bsy = dt_device_is_compatible(dev, "snps,dw-apb-uart");
 
+    if (dt_device_is_compatible(dev, "nvidia,tegra20-uart")) {
+        uart->ier_mask |= UART_IER_RTOIE;
+    }
+
     uart->vuart.base_addr = uart->io_base;
     uart->vuart.size = uart->io_size;
     uart->vuart.data_off = UART_THR <<uart->reg_shift;
@@ -1292,6 +1307,7 @@ static const struct dt_device_match ns16550_dt_match[] __initconst =
     DT_MATCH_COMPATIBLE("ns16550"),
     DT_MATCH_COMPATIBLE("ns16550a"),
     DT_MATCH_COMPATIBLE("snps,dw-apb-uart"),
+    DT_MATCH_COMPATIBLE("nvidia,tegra20-uart"),
     { /* sentinel */ },
 };
 
