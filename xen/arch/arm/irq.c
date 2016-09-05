@@ -143,6 +143,16 @@ static inline struct domain *irq_get_domain(struct irq_desc *desc)
     return irq_get_guest_info(desc)->d;
 }
 
+domid_t irq_get_domain_id(struct irq_desc *desc)
+{
+    /* If this domain isn't routed to a guest, return DOMID_XEN. */
+    if ( !test_bit(_IRQ_GUEST, &desc->status) )
+        return DOMID_XEN;
+
+    /* Otherise, get the guest domain's information. */
+    return irq_get_domain(desc)->domain_id;
+}
+
 void irq_set_affinity(struct irq_desc *desc, const cpumask_t *cpu_mask)
 {
     if ( desc != NULL )
