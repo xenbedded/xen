@@ -21,11 +21,13 @@
 #include <xen/stdbool.h>
 #include <xen/sched.h>
 #include <xen/vmap.h>
+#include <xen/iocap.h>
 
 #include <asm/io.h>
 #include <asm/gic.h>
 #include <asm/platform.h>
 #include <asm/platforms/tegra.h>
+#include <asm/mmio.h>
 
 
 /* Permanent mapping to the Tegra legacy interrupt controller. */
@@ -258,6 +260,218 @@ static void tegra_route_irq_to_xen(struct irq_desc *desc, unsigned int priority)
 }
 
 /**
+ * Parses a LIC MMIO read or write, and extracts the information needed to
+ * complete the request.
+ *
+ * @param info Information describing the MMIO read/write being performed.
+ * @param register_number The register number in the ictlr; e.g.
+ *        TEGRA_ICTLR_CPU_IER_SET.
+ * @param register_offset The offset into tegra_icltr_base at which the target
+ *        register exists.
+ * @param The number of the first IRQ represented by the given ictlr register.
+ */
+static void tegra_ictlr_parse_mmio_request(mmio_info_t *info,
+    int *register_number, int *register_offset, int *irq_base)
+{
+    /* Determine the offset of the access into the ICTLR region. */
+    uint32_t offset = info->gpa - TEGRA_ICTLR_BASE;
+
+    if(register_number)
+        *register_number = offset % TEGRA_ICTLR_SIZE;
+
+    if(register_offset)
+        *register_offset = offset;
+
+    if(irq_base) {
+        int ictlr_number = offset / TEGRA_ICTLR_SIZE;
+        *irq_base = (ictlr_number * TEGRA_IRQS_PER_ICTLR) + NR_LOCAL_IRQS;
+    }
+}
+
+/**
+ * Returns true iff the given IRQ is currently routed to the given domain.
+ *
+ * @param irq The IRQ number for the IRQ in question.
+ * @param d The domain in question.
+ * @return True iff the given domain is the current IRQ target.
+ */
+static bool irq_owned_by_domain(int irq, struct domain *d)
+{
+    struct irq_desc *desc = irq_to_desc(irq);
+    domid_t domid;
+    unsigned long flags;
+
+    BUG_ON(!desc);
+
+    spin_lock_irqsave(&desc->lock, flags);
+    domid = irq_get_domain_id(desc);
+    spin_unlock_irqrestore(&desc->lock, flags);
+
+    return (d->domain_id == domid);
+}
+
+
+/**
+ * Mediates an MMIO-read to the Tegra legacy interrupt controller.
+ * Ensures that each domain only is passed interrupt state for its
+ * own interupts.
+ */
+static int tegra_ictlr_domain_read(struct vcpu *v, mmio_info_t *info,
+    register_t *target_register, void *priv)
+{
+    register_t raw_value;
+
+    int register_number;
+    int register_offset;
+    int irq_base;
+    int i;
+
+    tegra_ictlr_parse_mmio_request(info, &register_number, &register_offset,
+                                   &irq_base);
+
+    /* Sanity check the read. */
+    if ( register_offset & 0x3 ) {
+        printk(XENLOG_G_ERR "d%u: Tegra LIC: Attempt to read unaligned ictlr addr"
+                            "(%" PRIpaddr ")!", current->domain->domain_id, info->gpa);
+        domain_crash_synchronous();
+    }
+    if ( info->dabt.size != DABT_WORD ) {
+        printk(XENLOG_G_ERR "d%u: Tegra LIC: Non-word read from ictlr addr"
+                            "%" PRIpaddr "!", current->domain->domain_id, info->gpa);
+        domain_crash_synchronous();
+    }
+
+    /* Ensure that we've only been handed an offset within our region. */
+    BUG_ON(register_offset > TEGRA_ICTLR_SIZE * TEGRA_ICTLR_COUNT);
+
+    /* Perform the core ictlr read. */
+    raw_value = readl(tegra_ictlr_base + register_offset);
+
+    /*
+     * We don't want to leak information about interrupts not controlled
+     * by the active domain. Thus, we'll zero out any ictlr slots for
+     * IRQs not owned by the given domain.
+     */
+    for (i = 0; i < TEGRA_IRQS_PER_ICTLR; ++i) {
+        int irq = irq_base + i;
+        int mask = BIT(irq % 32);
+
+        if(!irq_owned_by_domain(irq, current->domain))
+            raw_value &= ~mask;
+    }
+
+    /* Finally, set the target register to our read value */
+    *target_register = raw_value;
+    return 1;
+}
+
+
+/**
+ * Mediates an MMIO-read to the Tegra legacy interrupt controller.
+ * Ensures that each domain only can only control is own interrupts.
+ */
+static int tegra_ictlr_domain_write(struct vcpu *v, mmio_info_t *info,
+    register_t new_value, void *priv)
+{
+    register_t write_mask = 0;
+    register_t raw_value;
+
+    int register_number;
+    int register_offset;
+    int irq_base;
+    int i;
+
+    tegra_ictlr_parse_mmio_request(info, &register_number, &register_offset,
+                                   &irq_base);
+
+    /* Sanity check the read. */
+    if ( register_offset & 0x3 ) {
+        printk(XENLOG_G_ERR "d%u: Tegra LIC: Attempt to write unaligned ictlr addr"
+                            "(%" PRIpaddr ")!", current->domain->domain_id, info->gpa);
+        domain_crash_synchronous();
+        return 0;
+    }
+    if ( info->dabt.size != DABT_WORD ) {
+        printk(XENLOG_G_ERR "d%u: Tegra LIC: Non-word write to ictlr addr"
+                            "%" PRIpaddr "!", current->domain->domain_id, info->gpa);
+        domain_crash_synchronous();
+        return 0;
+    }
+
+    /* Ensure that we've only been handed an offset within our region. */
+    BUG_ON(register_offset > TEGRA_ICTLR_SIZE * TEGRA_ICTLR_COUNT);
+
+    /*
+     * We only want to write to bits that correspond to interrupts that the
+     * current domain controls. Accordingly, we'll create a mask that has a
+     * single bit set for each writable bit.
+     */
+    for (i = 0; i < TEGRA_IRQS_PER_ICTLR; ++i) {
+        int irq = irq_base + i;
+        int bit_mask = BIT(irq % 32);
+
+        if(irq_owned_by_domain(irq, current->domain))
+            write_mask |= bit_mask;
+    }
+
+    /*
+     * Read in the original value. We'll use this to ensure that we maintain
+     * the bit values for any bits not actively controlled by this domain. Note
+     * that we can perform this read without side effects, so this shouldn't
+     * change the actual operation being performed.
+     */
+    raw_value = readl(tegra_ictlr_base + register_offset);
+
+    /* Merge in the bit values the guest is allowed to write. */
+    raw_value &= ~write_mask;
+    raw_value |= (write_mask & new_value);
+
+    /* Finally perform the write. */
+    writel(raw_value, tegra_ictlr_base + register_offset);
+    return 1;
+}
+
+
+/**
+ * MMIO operations for Tegra chips. These allow the hwdom 'direct' access to
+ * the sections of the legacy interrupt controller that correspond to its
+ * devices, but disallow access to the sections controlled by other domains
+ * or by Xen.
+ */
+static struct mmio_handler_ops tegra_mmio_ops_ictlr = {
+    .read = tegra_ictlr_domain_read,
+    .write = tegra_ictlr_domain_write,
+};
+
+
+/**
+ * Set up the hardware domain for the Tegra, giving it mediated access to the
+ * platform's legacy interrupt controller.
+ */
+static int tegra_specific_mapping(struct domain *d)
+{
+    int rc;
+    unsigned long pfn_start, pfn_end;
+
+    pfn_start = paddr_to_pfn(TEGRA_ICTLR_BASE);
+    pfn_end = DIV_ROUND_UP(TEGRA_ICTLR_BASE + (TEGRA_ICTLR_SIZE * TEGRA_ICTLR_COUNT), PAGE_SIZE);
+
+    /* Force all access to the ictlr to go through our mediators. */
+    rc = iomem_deny_access(d, pfn_start, pfn_end);
+    if (rc)
+      panic("Could not deny access to the Tegra LIC iomem!\n");
+    rc = unmap_mmio_regions(d, _gfn(pfn_start), pfn_end - pfn_start + 1,
+                            _mfn(pfn_start));
+    if (rc)
+      panic("Could not deny access to the Tegra LIC!\n");
+
+    register_mmio_handler(d, &tegra_mmio_ops_ictlr,
+                          TEGRA_ICTLR_BASE, TEGRA_ICTLR_SIZE * TEGRA_ICTLR_COUNT, NULL);
+    return 0;
+}
+
+
+/**
  * Initialize the Tegra legacy interrupt controller, placing each interrupt
  * into a default state. These defaults ensure that stray interrupts don't
  * affect Xen.
@@ -296,17 +510,7 @@ static int tegra_initialize_legacy_interrupt_controller(void)
  */
 static int tegra_init(void)
 {
-    int rc;
-
-    rc = tegra_initialize_legacy_interrupt_controller();
-
-    /*
-     * TODO: Virtualize the MMIO regions for the ictlr, ensuring the hwdom
-     * (and possibly passhtrough domains) can only access ictlr registers for
-     * interrupts they actually own.
-     */
-
-    return rc;
+    return tegra_initialize_legacy_interrupt_controller();
 }
 
 
@@ -336,4 +540,5 @@ PLATFORM_START(tegra, "Tegra")
     .irq_for_device = tegra_irq_for_device,
     .route_irq_to_xen = tegra_route_irq_to_xen,
     .route_irq_to_guest = tegra_route_irq_to_guest,
+    .specific_mapping = tegra_specific_mapping,
 PLATFORM_END
