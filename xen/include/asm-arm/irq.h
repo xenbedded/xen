@@ -44,6 +44,8 @@ int route_irq_to_guest(struct domain *d, unsigned int virq,
                        unsigned int irq, const char *devname);
 int release_guest_irq(struct domain *d, unsigned int irq);
 
+domid_t irq_get_domain_id(struct irq_desc *desc);
+
 void arch_move_irqs(struct vcpu *v);
 
 #define arch_evtchn_bind_pirq(d, pirq) ((void)((d) + (pirq)))
