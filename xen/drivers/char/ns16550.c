@@ -62,7 +62,7 @@ static struct ns16550 {
     struct timer resume_timer;
     unsigned int timeout_ms;
     bool_t intr_works;
-    bool_t dw_usr_bsy;
+    uint8_t hw_quirks;
 #ifdef CONFIG_HAS_PCI
     /* PCI card parameters. */
     bool_t pb_bdf_enable;   /* if =1, pb-bdf effective, port behind bridge */
@@ -414,6 +414,10 @@ static const struct ns16550_config __initconst uart_config[] =
 };
 #endif
 
+/* Various hardware quirks/features that may be need be enabled per device */
+#define HW_QUIRKS_DW_USR_BSY         (1<<0)
+#define HW_QUIRKS_USE_RTOIE          (1<<1)
+
 static void ns16550_delayed_resume(void *data);
 
 static u8 ns_read_reg(struct ns16550 *uart, unsigned int reg)
@@ -578,7 +582,7 @@ static void ns16550_setup_preirq(struct ns16550 *uart)
     /* No interrupts. */
     ns_write_reg(uart, UART_IER, 0);
 
-    if ( uart->dw_usr_bsy &&
+    if ( (uart->hw_quirks & HW_QUIRKS_DW_USR_BSY) &&
          (ns_read_reg(uart, UART_IIR) & UART_IIR_BSY) == UART_IIR_BSY )
     {
         /* DesignWare 8250 detects if LCR is written while the UART is
@@ -651,12 +655,23 @@ static void ns16550_setup_postirq(struct ns16550 *uart)
 {
     if ( uart->irq > 0 )
     {
+        u8 ier_value = 0;
+
         /* Master interrupt enable; also keep DTR/RTS asserted. */
         ns_write_reg(uart,
                      UART_MCR, UART_MCR_OUT2 | UART_MCR_DTR | UART_MCR_RTS);
 
         /* Enable receive interrupts. */
-        ns_write_reg(uart, UART_IER, UART_IER_ERDAI);
+        ier_value = UART_IER_ERDAI;
+
+        /*
+         * If we're on a platform that needs Rx timeouts enabled, also
+         * set Rx TimeOut Interrupt Enable (RTOIE).
+         */
+        if ( uart->hw_quirks & HW_QUIRKS_USE_RTOIE )
+          ier_value |= UART_IER_RTOIE;
+
+        ns_write_reg(uart, UART_IER, ier_value);
     }
 
     if ( uart->irq >= 0 )
@@ -1271,7 +1286,11 @@ static int __init ns16550_uart_dt_init(struct dt_device_node *dev,
         return -EINVAL;
     uart->irq = res;
 
-    uart->dw_usr_bsy = dt_device_is_compatible(dev, "snps,dw-apb-uart");
+    if ( dt_device_is_compatible(dev, "snps,dw-apb-uart") )
+        uart->hw_quirks |= HW_QUIRKS_DW_USR_BSY;
+
+    if ( dt_device_is_compatible(dev, "nvidia,tegra20-uart") )
+        uart->hw_quirks |= HW_QUIRKS_USE_RTOIE;
 
     uart->vuart.base_addr = uart->io_base;
     uart->vuart.size = uart->io_size;
@@ -1292,6 +1311,7 @@ static const struct dt_device_match ns16550_dt_match[] __initconst =
     DT_MATCH_COMPATIBLE("ns16550"),
     DT_MATCH_COMPATIBLE("ns16550a"),
     DT_MATCH_COMPATIBLE("snps,dw-apb-uart"),
+    DT_MATCH_COMPATIBLE("nvidia,tegra20-uart"),
     { /* sentinel */ },
 };
 
