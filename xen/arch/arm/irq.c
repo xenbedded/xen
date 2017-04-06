@@ -26,6 +26,7 @@
 
 #include <asm/gic.h>
 #include <asm/vgic.h>
+#include <asm/platform.h>
 
 static unsigned int local_irqs_type[NR_LOCAL_IRQS];
 static DEFINE_SPINLOCK(local_irqs_type_lock);
@@ -369,7 +370,7 @@ int setup_irq(unsigned int irq, unsigned int irqflags, struct irqaction *new)
     /* First time the IRQ is setup */
     if ( disabled )
     {
-        gic_route_irq_to_xen(desc, GIC_PRI_IRQ);
+        platform_route_irq_to_xen(desc, GIC_PRI_IRQ);
         /* It's fine to use smp_processor_id() because:
          * For PPI: irq_desc is banked
          * For SPI: we don't care for now which CPU will receive the
@@ -506,7 +507,7 @@ int route_irq_to_guest(struct domain *d, unsigned int virq,
     if ( retval )
         goto out;
 
-    retval = gic_route_irq_to_guest(d, virq, desc, GIC_PRI_IRQ);
+    retval = platform_route_irq_to_guest(d, virq, desc, GIC_PRI_IRQ);
 
     spin_unlock_irqrestore(&desc->lock, flags);
 

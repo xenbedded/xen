@@ -28,6 +28,7 @@
 #include <xen/vmap.h>
 #include <asm/cadence-uart.h>
 #include <asm/io.h>
+#include <asm/platform.h>
 
 static struct cuart {
     unsigned int irq;
@@ -173,7 +174,7 @@ static int __init cuart_init(struct dt_device_node *dev, const void *data)
         return res;
     }
 
-    res = platform_get_irq(dev, 0);
+    res = platform_irq_for_device(dev, 0);
     if ( res < 0 )
     {
         printk("cadence: Unable to retrieve the IRQ\n");

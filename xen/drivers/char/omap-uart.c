@@ -21,6 +21,7 @@
 #include <xen/vmap.h>
 #include <xen/8250-uart.h>
 #include <asm/io.h>
+#include <asm/platform.h>
 
 #define REG_SHIFT 2
 
@@ -352,7 +353,7 @@ static int __init omap_uart_init(struct dt_device_node *dev,
         return res;
     }
 
-    res = platform_get_irq(dev, 0);
+    res = platform_irq_for_device(dev, 0);
     if ( res < 0 )
     {
         printk("omap-uart: Unable to retrieve the IRQ\n");

@@ -1115,16 +1115,20 @@ static int handle_device(struct domain *d, struct dt_device_node *dev,
 
         /*
          * Don't map IRQ that have no physical meaning
-         * ie: IRQ whose controller is not the GIC
+         * ie: IRQ that does not wind up being controlled by the GIC
+         * (Note that we can't just check to see if an IRQ is owned by the GIC,
+         *  as some platforms have a controller between the device irq and the GIC,
+         *  such as the Tegra legacy interrupt controller.)
          */
-        if ( rirq.controller != dt_interrupt_controller )
+        if ( !platform_irq_is_routable(&rirq) )
         {
-            dt_dprintk("irq %u not connected to primary controller. Connected to %s\n",
-                      i, dt_node_full_name(rirq.controller));
+            dt_dprintk("irq %u not (directly or indirectly) connected to primary"
+                        "controller. Connected to %s\n", i,
+                        dt_node_full_name(rirq.controller));
             continue;
         }
 
-        res = platform_get_irq(dev, i);
+        res = platform_irq_for_device(dev, i);
         if ( res < 0 )
         {
             printk(XENLOG_ERR "Unable to get irq %u for %s\n",

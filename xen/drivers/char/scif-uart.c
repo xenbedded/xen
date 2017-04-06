@@ -28,6 +28,7 @@
 #include <asm/device.h>
 #include <asm/scif-uart.h>
 #include <asm/io.h>
+#include <asm/platform.h>
 
 #define PARITY_NONE    0
 #define PARITY_EVEN    1
@@ -254,7 +255,7 @@ static int __init scif_uart_init(struct dt_device_node *dev,
         return res;
     }
 
-    res = platform_get_irq(dev, 0);
+    res = platform_irq_for_device(dev, 0);
     if ( res < 0 )
     {
         printk("scif-uart: Unable to retrieve the IRQ\n");

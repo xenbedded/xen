@@ -26,6 +26,7 @@
 #include <asm/device.h>
 #include <asm/exynos4210-uart.h>
 #include <asm/io.h>
+#include <asm/platform.h>
 
 static struct exynos4210_uart {
     unsigned int baud, clock_hz, data_bits, parity, stop_bits;
@@ -322,7 +323,7 @@ static int __init exynos4210_uart_init(struct dt_device_node *dev,
         return res;
     }
 
-    res = platform_get_irq(dev, 0);
+    res = platform_irq_for_device(dev, 0);
     if ( res < 0 )
     {
         printk("exynos4210: Unable to retrieve the IRQ\n");

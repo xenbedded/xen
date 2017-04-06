@@ -28,6 +28,7 @@
 #include <xen/vmap.h>
 #include <asm/pl011-uart.h>
 #include <asm/io.h>
+#include <asm/platform.h>
 
 static struct pl011 {
     unsigned int data_bits, parity, stop_bits;
@@ -273,7 +274,7 @@ static int __init pl011_dt_uart_init(struct dt_device_node *dev,
         return res;
     }
 
-    res = platform_get_irq(dev, 0);
+    res = platform_irq_for_device(dev, 0);
     if ( res < 0 )
     {
         printk("pl011: Unable to retrieve the IRQ\n");

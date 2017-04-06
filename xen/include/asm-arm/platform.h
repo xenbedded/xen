@@ -26,6 +26,13 @@ struct platform_desc {
     void (*reset)(void);
     /* Platform power-off */
     void (*poweroff)(void);
+    /* Platform-specific IRQ routing */
+    int (*route_irq_to_guest)(struct domain *d, unsigned int virq,
+                               struct irq_desc *desc, unsigned int priority);
+    void (*route_irq_to_xen)(struct irq_desc *desc, unsigned int priority);
+    bool_t (*irq_is_routable)(struct dt_raw_irq * rirq);
+    int (*irq_for_device)(const struct dt_device_node *dev, int index);
+
     /*
      * Platform quirks
      * Defined has a function because a platform can support multiple
@@ -56,6 +63,13 @@ int platform_cpu_up(int cpu);
 void platform_reset(void);
 void platform_poweroff(void);
 bool_t platform_has_quirk(uint32_t quirk);
+
+int platform_route_irq_to_guest(struct domain *d, unsigned int virq,
+                                 struct irq_desc *desc, unsigned int priority);
+void platform_route_irq_to_xen(struct irq_desc *desc, unsigned int priority);
+bool_t platform_irq_is_routable(struct dt_raw_irq *rirq);
+int platform_irq_for_device(const struct dt_device_node *dev, int index);
+
 bool_t platform_device_is_blacklisted(const struct dt_device_node *node);
 
 #define PLATFORM_START(_name, _namestr)                         \
