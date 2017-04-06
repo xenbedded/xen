@@ -20,11 +20,14 @@
 #include <xen/stdbool.h>
 #include <xen/sched.h>
 #include <xen/vmap.h>
+#include <xen/iocap.h>
 
 #include <asm/io.h>
 #include <asm/gic.h>
 #include <asm/platform.h>
 #include <asm/platforms/tegra.h>
+#include <asm/platforms/tegra-mlic.h>
+#include <asm/mmio.h>
 
 /* Permanent mapping to the Tegra legacy interrupt controller. */
 static void __iomem *tegra_ictlr_base;
@@ -210,6 +213,15 @@ static void tegra_route_irq_to_xen(struct irq_desc *desc, unsigned int priority)
 }
 
 /*
+ * Use platform specific mapping for hook to initialize mediated legacy
+ * interrupt controller for hardware domain.
+ */
+static int tegra_specific_mapping(struct domain *d)
+{
+    return domain_tegra_mlic_init(d);
+}
+
+/*
  * Read register from specified legacy interrupt interrupt controller.
  */
 uint32_t tegra_lic_readl(unsigned int ictlr_index, unsigned int register_offset)
@@ -299,6 +311,7 @@ PLATFORM_START(tegra, "Tegra")
     .irq_is_routable = tegra_irq_is_routable,
     .route_irq_to_xen = tegra_route_irq_to_xen,
     .route_irq_to_guest = tegra_route_irq_to_guest,
+    .specific_mapping = tegra_specific_mapping,
 PLATFORM_END
 
 /*
